@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { clothingApi } from '@/services/api';
+import Image from 'next/image';
+import { clothingApi, rentalsApi, subscriptionsApi } from '@/services/api';
 import { useAuth } from '@/lib/auth';
 import { FadeInUp, CardHover } from '@/components/Animations';
 import { Meteors } from '@/components/ui/meteors';
@@ -32,6 +33,8 @@ export default function CatalogPage() {
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('Все');
   const [selectedSize, setSelectedSize] = useState('Все');
+  const [rentCart, setRentCart] = useState<string[]>([]);
+  const [renting, setRenting] = useState(false);
   const { user } = useAuth();
   const router = useRouter();
 
@@ -77,8 +80,40 @@ export default function CatalogPage() {
   const handleRent = (item: Clothing) => {
     if (!user) { router.push('/login'); return; }
     if (!item.isAvailable || item.quantity <= 0) return;
-    alert(`Заявка на аренду: ${item.name}\nСтоимость: ${item.dailyPrice.toLocaleString()}₸/день\nДепозит: ${item.deposit.toLocaleString()}₸\n\n(Для завершения оформите подписку в разделе "Тарифы")`);
-    router.push('/pricing');
+
+    if (rentCart.includes(item.id)) {
+      setRentCart(prev => prev.filter(id => id !== item.id));
+    } else {
+      setRentCart(prev => [...prev, item.id]);
+    }
+  };
+
+  const handleRentSubmit = async () => {
+    if (!user || rentCart.length === 0) return;
+    setRenting(true);
+    try {
+      const start = new Date();
+      const end = new Date();
+      end.setDate(end.getDate() + 7);
+      await rentalsApi.create({
+        clothingIds: rentCart,
+        startDate: start.toISOString(),
+        endDate: end.toISOString()
+      });
+      setRentCart([]);
+      alert('Аренда оформлена! Перейдите в личный кабинет для оплаты.');
+      router.push('/account');
+    } catch (error: any) {
+      const msg = error.response?.data?.error || 'Ошибка';
+      if (msg.includes('подписк')) {
+        alert('Для аренды необходима подписка. Переход к тарифам...');
+        router.push('/pricing');
+      } else {
+        alert(msg);
+      }
+    } finally {
+      setRenting(false);
+    }
   };
 
   if (loading) {
@@ -167,11 +202,12 @@ export default function CatalogPage() {
                   <CardHover>
                     <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm dark:shadow-slate-900/50 overflow-hidden h-full border border-slate-100 dark:border-slate-700 flex flex-col">
                       <div className="h-56 relative overflow-hidden">
-                        <img
+                        <Image
                           src={item.imageUrl || placeholderByCategory[item.category] || placeholderByCategory['Одежда']}
                           alt={item.name}
-                          className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
-                          loading="lazy"
+                          fill
+                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                          className="object-cover transition-transform duration-500 hover:scale-110"
                         />
                         <div className="absolute top-3 right-3">
                           <span className={`text-xs px-2.5 py-1 rounded-full font-medium backdrop-blur-sm ${getConditionColor(item.condition)}`}>
@@ -211,10 +247,12 @@ export default function CatalogPage() {
                             className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all ${
                               outOfStock
                                 ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed'
-                                : 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98] shadow-sm hover:shadow-md'
+                                : rentCart.includes(item.id)
+                                  ? 'bg-slate-900 dark:bg-white dark:text-slate-900 text-white hover:bg-slate-800 dark:hover:bg-slate-100 active:scale-[0.98] shadow-sm'
+                                  : 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98] shadow-sm hover:shadow-md'
                             }`}
                           >
-                            {outOfStock ? 'Нет в наличии' : 'Арендовать'}
+                            {outOfStock ? 'Нет в наличии' : rentCart.includes(item.id) ? '✓ В корзине' : 'Арендовать'}
                           </button>
                         </div>
                       </div>
@@ -226,6 +264,47 @@ export default function CatalogPage() {
           </div>
         )}
       </div>
+
+      {/* Floating Cart Bar */}
+      {rentCart.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 p-4">
+          <div className="container mx-auto max-w-4xl">
+            <div className="bg-slate-900 dark:bg-white dark:text-slate-900 text-white rounded-2xl shadow-2xl p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center font-bold">
+                  {rentCart.length}
+                </div>
+                <div>
+                  <p className="font-semibold">{rentCart.length} {rentCart.length === 1 ? 'вещь' : 'вещей'} выбрано</p>
+                  <p className="text-sm text-slate-300 dark:text-slate-600">
+                    ~{(() => {
+                      const total = filteredClothing
+                        .filter(c => rentCart.includes(c.id))
+                        .reduce((sum, c) => sum + c.dailyPrice, 0);
+                      return total.toLocaleString();
+                    })()}₸/день
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setRentCart([])}
+                  className="text-slate-400 dark:text-slate-500 hover:text-white dark:hover:text-slate-900 transition text-sm"
+                >
+                  Очистить
+                </button>
+                <button
+                  onClick={handleRentSubmit}
+                  disabled={renting}
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-semibold transition-all active:scale-[0.98] disabled:opacity-50"
+                >
+                  {renting ? 'Оформление...' : 'Оформить аренду'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

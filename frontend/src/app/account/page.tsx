@@ -13,7 +13,9 @@ export default function AccountPage() {
   const router = useRouter();
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const [activeRentals, setActiveRentals] = useState<RentalOrder[]>([]);
+  const [allRentals, setAllRentals] = useState<RentalOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [rentalTab, setRentalTab] = useState<'active' | 'history'>('active');
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -25,12 +27,14 @@ export default function AccountPage() {
 
   const fetchData = async () => {
     try {
-      const [subRes, rentalsRes] = await Promise.all([
+      const [subRes, activeRes, allRes] = await Promise.all([
         subscriptionsApi.getCurrent(),
-        rentalsApi.getActive()
+        rentalsApi.getActive(),
+        rentalsApi.getMyRentals()
       ]);
       setSubscription(subRes.data);
-      setActiveRentals(rentalsRes.data);
+      setActiveRentals(activeRes.data);
+      setAllRentals(allRes.data);
     } catch (error) {
       console.error(error);
     } finally {
@@ -153,60 +157,132 @@ export default function AccountPage() {
           </CardHover>
         </FadeInUp>
 
-        {/* Active Rentals */}
+        {/* Rentals */}
         <FadeInUp delay={0.3}>
           <CardHover>
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-6 border border-slate-100 dark:border-slate-700">
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">Активные аренды</h2>
-              {activeRentals.length === 0 ? (
-                <div className="text-center py-8">
-                  <div className="text-4xl mb-4">👗</div>
-                  <p className="text-slate-500 dark:text-slate-400 mb-4">Нет активных аренд</p>
-                  <Link href="/catalog" className="inline-block bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-white px-6 py-3 rounded-xl font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 transition">
-                    Перейти в каталог
-                  </Link>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Аренды</h2>
+                <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setRentalTab('active')}
+                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${
+                      rentalTab === 'active'
+                        ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                    }`}
+                  >
+                    Активные ({activeRentals.length})
+                  </button>
+                  <button
+                    onClick={() => setRentalTab('history')}
+                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${
+                      rentalTab === 'history'
+                        ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                    }`}
+                  >
+                    История ({allRentals.filter(r => !['PENDING', 'ACTIVE'].includes(r.status)).length})
+                  </button>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {activeRentals.map((rental, i) => (
-                    <FadeInUp key={rental.id} delay={i * 0.1}>
-                      <div className="border border-slate-200 dark:border-slate-600 rounded-xl p-4 hover:border-emerald-300 dark:hover:border-emerald-600 transition">
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <p className="font-medium text-slate-900 dark:text-white">Заказ #{rental.id.slice(0, 8)}</p>
-                            <p className="text-sm text-slate-500 dark:text-slate-400">
-                              {new Date(rental.startDate).toLocaleDateString('ru-RU')} —{' '}
-                              {new Date(rental.endDate).toLocaleDateString('ru-RU')}
-                            </p>
-                          </div>
-                          <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                            rental.status === 'ACTIVE' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-                          }`}>
-                            {rental.status === 'ACTIVE' ? 'Активна' : 'Ожидает'}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-2 mb-3">
-                          {rental.items.map(item => (
-                            <span key={item.id} className="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-sm text-slate-700 dark:text-slate-300">
-                              {item.clothing.name}
+              </div>
+
+              {rentalTab === 'active' ? (
+                activeRentals.length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="text-4xl mb-4">👗</div>
+                    <p className="text-slate-500 dark:text-slate-400 mb-4">Нет активных аренд</p>
+                    <Link href="/catalog" className="inline-block bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-white px-6 py-3 rounded-xl font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 transition">
+                      Перейти в каталог
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {activeRentals.map((rental, i) => (
+                      <FadeInUp key={rental.id} delay={i * 0.1}>
+                        <div className="border border-slate-200 dark:border-slate-600 rounded-xl p-4 hover:border-emerald-300 dark:hover:border-emerald-600 transition">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <p className="font-medium text-slate-900 dark:text-white">Заказ #{rental.id.slice(0, 8)}</p>
+                              <p className="text-sm text-slate-500 dark:text-slate-400">
+                                {new Date(rental.startDate).toLocaleDateString('ru-RU')} —{' '}
+                                {new Date(rental.endDate).toLocaleDateString('ru-RU')}
+                              </p>
+                            </div>
+                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                              rental.status === 'ACTIVE' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                            }`}>
+                              {rental.status === 'ACTIVE' ? 'Активна' : 'Ожидает'}
                             </span>
-                          ))}
+                          </div>
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {rental.items.map(item => (
+                              <span key={item.id} className="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-sm text-slate-700 dark:text-slate-300">
+                                {item.clothing.name}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="font-semibold text-emerald-600">
+                              {rental.totalPrice.toLocaleString()}₸
+                            </span>
+                            <button
+                              onClick={() => handleReturn(rental.id)}
+                              className="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-white px-4 py-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition text-sm"
+                            >
+                              Вернуть вещи
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold text-emerald-600">
-                            {rental.totalPrice.toLocaleString()}₸
-                          </span>
-                          <button
-                            onClick={() => handleReturn(rental.id)}
-                            className="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-white px-4 py-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition text-sm"
-                          >
-                            Вернуть вещи
-                          </button>
-                        </div>
-                      </div>
-                    </FadeInUp>
-                  ))}
-                </div>
+                      </FadeInUp>
+                    ))}
+                  </div>
+                )
+              ) : (
+                allRentals.filter(r => !['PENDING', 'ACTIVE'].includes(r.status)).length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="text-4xl mb-4">📋</div>
+                    <p className="text-slate-500 dark:text-slate-400">Нет завершённых аренд</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {allRentals
+                      .filter(r => !['PENDING', 'ACTIVE'].includes(r.status))
+                      .map((rental, i) => {
+                        const statusConfig: Record<string, { label: string; color: string }> = {
+                          RETURNED: { label: 'Возвращена', color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' },
+                          CANCELLED: { label: 'Отменена', color: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' },
+                          OVERDUE: { label: 'Просрочена', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' },
+                        };
+                        const config = statusConfig[rental.status] || { label: rental.status, color: 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300' };
+                        return (
+                          <div key={rental.id} className="border border-slate-200 dark:border-slate-600 rounded-xl p-4 opacity-75">
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <p className="font-medium text-slate-900 dark:text-white text-sm">Заказ #{rental.id.slice(0, 8)}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                  {new Date(rental.startDate).toLocaleDateString('ru-RU')} — {new Date(rental.endDate).toLocaleDateString('ru-RU')}
+                                </p>
+                              </div>
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${config.color}`}>
+                                {config.label}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 mb-2">
+                              {rental.items.map(item => (
+                                <span key={item.id} className="bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full text-xs text-slate-600 dark:text-slate-400">
+                                  {item.clothing.name}
+                                </span>
+                              ))}
+                            </div>
+                            <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                              {rental.totalPrice.toLocaleString()}₸
+                            </span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )
               )}
             </div>
           </CardHover>

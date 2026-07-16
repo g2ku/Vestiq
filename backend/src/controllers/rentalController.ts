@@ -77,16 +77,17 @@ export const createRental = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Check if all clothing items are available
+    // Check if all clothing items are available and have stock
     const clothingItems = await prisma.clothing.findMany({
       where: {
         id: { in: clothingIds },
-        isAvailable: true
+        isAvailable: true,
+        quantity: { gt: 0 }
       }
     });
 
     if (clothingItems.length !== clothingIds.length) {
-      return res.status(400).json({ error: 'Некоторые вещи недоступны' });
+      return res.status(400).json({ error: 'Некоторые вещи недоступны или закончились на складе' });
     }
 
     // Calculate total price
@@ -117,11 +118,20 @@ export const createRental = async (req: AuthRequest, res: Response) => {
       }
     });
 
-    // Mark clothing as unavailable
-    await prisma.clothing.updateMany({
-      where: { id: { in: clothingIds } },
-      data: { isAvailable: false }
-    });
+    // Decrement quantity for each rented item
+    for (const clothingId of clothingIds) {
+      const item = clothingItems.find(c => c.id === clothingId);
+      if (!item) continue;
+
+      const newQuantity = item.quantity - 1;
+      await prisma.clothing.update({
+        where: { id: clothingId },
+        data: {
+          quantity: newQuantity,
+          isAvailable: newQuantity > 0
+        }
+      });
+    }
 
     res.status(201).json(rental);
   } catch (error) {
@@ -155,7 +165,7 @@ export const returnRental = async (req: AuthRequest, res: Response) => {
       data: { status: 'RETURNED' }
     });
 
-    // Update items and make clothing available again
+    // Update items and restore clothing quantity
     for (const item of rental.items) {
       await prisma.rentalItem.update({
         where: { id: item.id },
@@ -165,9 +175,13 @@ export const returnRental = async (req: AuthRequest, res: Response) => {
         }
       });
 
+      // Restore quantity and ensure availability
       await prisma.clothing.update({
         where: { id: item.clothingId },
-        data: { isAvailable: true }
+        data: {
+          quantity: { increment: 1 },
+          isAvailable: true
+        }
       });
     }
 
@@ -202,12 +216,17 @@ export const cancelRental = async (req: AuthRequest, res: Response) => {
       data: { status: 'CANCELLED' }
     });
 
-    // Make clothing available again
+    // Restore clothing quantity
     const clothingIds = rental.items.map(item => item.clothingId);
-    await prisma.clothing.updateMany({
-      where: { id: { in: clothingIds } },
-      data: { isAvailable: true }
-    });
+    for (const clothingId of clothingIds) {
+      await prisma.clothing.update({
+        where: { id: clothingId },
+        data: {
+          quantity: { increment: 1 },
+          isAvailable: true
+        }
+      });
+    }
 
     res.json({ message: 'Аренда отменена' });
   } catch (error) {
