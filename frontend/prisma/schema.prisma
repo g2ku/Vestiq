@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  phone         String?   @unique
+  passwordHash  String
+  fullName      String?
+  avatarUrl     String?
+  role          String    @default("USER")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  subscription  UserSubscription?
+  rentals       RentalOrder[]
+  payments      Payment[]
+}
+
+model SubscriptionPlan {
+  id            String    @id @default(uuid())
+  name          String    @unique
+  description   String?
+  priceMonthly  Int
+  maxItems      Int
+  rentalDays    Int
+  features      String    @default("[]")
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  subscriptions UserSubscription[]
+}
+
+model UserSubscription {
+  id            String    @id @default(uuid())
+  userId        String    @unique
+  planId        String
+  startDate     DateTime  @default(now())
+  endDate       DateTime
+  status        String    @default("ACTIVE")
+  autoRenew     Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan          SubscriptionPlan @relation(fields: [planId], references: [id])
+  rentals       RentalOrder[]
+}
+
+model Clothing {
+  id            String    @id @default(uuid())
+  name          String
+  description   String?
+  category      String
+  subcategory   String?
+  brand         String?
+  size          String
+  color         String?
+  imageUrl      String?
+  condition     String    @default("EXCELLENT")
+  dailyPrice    Int
+  deposit       Int       @default(0)
+  quantity      Int       @default(1)
+  isAvailable   Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  rentals       RentalItem[]
+}
+
+model RentalOrder {
+  id            String    @id @default(uuid())
+  userId        String
+  subscriptionId String?
+  startDate     DateTime  @default(now())
+  endDate       DateTime
+  totalPrice    Int
+  status        String    @default("PENDING")
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription  UserSubscription? @relation(fields: [subscriptionId], references: [id])
+  items         RentalItem[]
+  payment       Payment?
+}
+
+model RentalItem {
+  id                String    @id @default(uuid())
+  orderId           String
+  clothingId        String
+  returnDate        DateTime?
+  conditionAtReturn String?
+  createdAt         DateTime  @default(now())
+
+  order             RentalOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  clothing          Clothing    @relation(fields: [clothingId], references: [id])
+}
+
+model Payment {
+  id              String    @id @default(uuid())
+  userId          String
+  orderId         String?   @unique
+  amount          Int
+  currency        String    @default("KZT")
+  paymentMethod   String
+  status          String    @default("PENDING")
+  transactionId   String?
+  metadata        String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order           RentalOrder?  @relation(fields: [orderId], references: [id])
+}
