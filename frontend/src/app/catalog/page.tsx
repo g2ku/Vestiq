@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { clothingApi, rentalsApi, subscriptionsApi } from '@/services/api';
+import { clothingApi, rentalsApi } from '@/services/api';
 import { useAuth } from '@/lib/auth';
 import { FadeInUp, CardHover } from '@/components/Animations';
 import { Meteors } from '@/components/ui/meteors';
@@ -28,13 +28,26 @@ const placeholderByCategory: Record<string, string> = {
   'Туристические': 'https://images.unsplash.com/photo-1530789253388-582c481c54b0?w=400&h=500&fit=crop',
 };
 
+type CheckoutStep = 'dates' | 'confirm' | 'processing' | 'success' | 'error';
+
 export default function CatalogPage() {
   const [clothing, setClothing] = useState<Clothing[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('Все');
   const [selectedSize, setSelectedSize] = useState('Все');
   const [rentCart, setRentCart] = useState<string[]>([]);
-  const [renting, setRenting] = useState(false);
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>('dates');
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().split('T')[0];
+  });
+  const [errorMsg, setErrorMsg] = useState('');
   const { user } = useAuth();
   const router = useRouter();
 
@@ -77,10 +90,15 @@ export default function CatalogPage() {
 
   const counts = getCategoryCounts();
 
+  const cartItems = clothing.filter(c => rentCart.includes(c.id));
+  const days = Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)));
+  const totalPerDay = cartItems.reduce((sum, c) => sum + c.dailyPrice, 0);
+  const totalPrice = totalPerDay * days;
+  const totalDeposit = cartItems.reduce((sum, c) => sum + c.deposit, 0);
+
   const handleRent = (item: Clothing) => {
     if (!user) { router.push('/login'); return; }
     if (!item.isAvailable || item.quantity <= 0) return;
-
     if (rentCart.includes(item.id)) {
       setRentCart(prev => prev.filter(id => id !== item.id));
     } else {
@@ -88,31 +106,31 @@ export default function CatalogPage() {
     }
   };
 
-  const handleRentSubmit = async () => {
-    if (!user || rentCart.length === 0) return;
-    setRenting(true);
+  const handleOpenCheckout = () => {
+    if (!user) { router.push('/login'); return; }
+    if (rentCart.length === 0) return;
+    setCheckoutStep('dates');
+    setShowCheckout(true);
+  };
+
+  const handleConfirmRental = async () => {
+    setCheckoutStep('processing');
     try {
-      const start = new Date();
-      const end = new Date();
-      end.setDate(end.getDate() + 7);
       await rentalsApi.create({
         clothingIds: rentCart,
-        startDate: start.toISOString(),
-        endDate: end.toISOString()
+        startDate: new Date(startDate).toISOString(),
+        endDate: new Date(endDate).toISOString()
       });
+      setCheckoutStep('success');
       setRentCart([]);
-      alert('Аренда оформлена! Перейдите в личный кабинет для оплаты.');
-      router.push('/account');
     } catch (error: any) {
       const msg = error.response?.data?.error || 'Ошибка';
       if (msg.includes('подписк')) {
-        alert('Для аренды необходима подписка. Переход к тарифам...');
-        router.push('/pricing');
+        setErrorMsg('Для аренды необходима подписка');
       } else {
-        alert(msg);
+        setErrorMsg(msg);
       }
-    } finally {
-      setRenting(false);
+      setCheckoutStep('error');
     }
   };
 
@@ -266,7 +284,7 @@ export default function CatalogPage() {
       </div>
 
       {/* Floating Cart Bar */}
-      {rentCart.length > 0 && (
+      {rentCart.length > 0 && !showCheckout && (
         <div className="fixed bottom-0 left-0 right-0 z-50 p-4">
           <div className="container mx-auto max-w-4xl">
             <div className="bg-slate-900 dark:bg-white dark:text-slate-900 text-white rounded-2xl shadow-2xl p-4 flex items-center justify-between">
@@ -276,14 +294,7 @@ export default function CatalogPage() {
                 </div>
                 <div>
                   <p className="font-semibold">{rentCart.length} {rentCart.length === 1 ? 'вещь' : 'вещей'} выбрано</p>
-                  <p className="text-sm text-slate-300 dark:text-slate-600">
-                    ~{(() => {
-                      const total = filteredClothing
-                        .filter(c => rentCart.includes(c.id))
-                        .reduce((sum, c) => sum + c.dailyPrice, 0);
-                      return total.toLocaleString();
-                    })()}₸/день
-                  </p>
+                  <p className="text-sm text-slate-300 dark:text-slate-600">~{totalPerDay.toLocaleString()}₸/день</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -294,14 +305,254 @@ export default function CatalogPage() {
                   Очистить
                 </button>
                 <button
-                  onClick={handleRentSubmit}
-                  disabled={renting}
-                  className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-semibold transition-all active:scale-[0.98] disabled:opacity-50"
+                  onClick={handleOpenCheckout}
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-semibold transition-all active:scale-[0.98]"
                 >
-                  {renting ? 'Оформление...' : 'Оформить аренду'}
+                  Оформить аренду
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Checkout Modal */}
+      {showCheckout && (
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => { if (checkoutStep !== 'processing') setShowCheckout(false); }} />
+          <div className="relative bg-white dark:bg-slate-800 w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+
+            {/* Step: Select Dates */}
+            {checkoutStep === 'dates' && (
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Выберите даты</h2>
+                  <button onClick={() => setShowCheckout(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-2xl leading-none">&times;</button>
+                </div>
+
+                <div className="space-y-4 mb-6">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Дата начала</label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        if (new Date(e.target.value) >= new Date(endDate)) {
+                          const d = new Date(e.target.value);
+                          d.setDate(d.getDate() + 1);
+                          setEndDate(d.toISOString().split('T')[0]);
+                        }
+                      }}
+                      className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Дата окончания</label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      min={new Date(new Date(startDate).getTime() + 86400000).toISOString().split('T')[0]}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Items summary */}
+                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 mb-6">
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Ваши вещи ({cartItems.length})</p>
+                  <div className="space-y-2">
+                    {cartItems.map(item => (
+                      <div key={item.id} className="flex items-center justify-between text-sm">
+                        <span className="text-slate-600 dark:text-slate-400 truncate mr-2">{item.name}</span>
+                        <span className="text-slate-900 dark:text-white font-medium whitespace-nowrap">{item.dailyPrice.toLocaleString()}₸/день</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Price breakdown */}
+                <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-4 mb-6">
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-slate-600 dark:text-slate-400">{days} {days === 1 ? 'день' : days < 5 ? 'дня' : 'дней'} × {cartItems.length} {cartItems.length === 1 ? 'вещь' : 'вещей'}</span>
+                    <span className="text-slate-900 dark:text-white font-medium">{totalPerDay.toLocaleString()}₸/день</span>
+                  </div>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-slate-600 dark:text-slate-400">Стоимость аренды</span>
+                    <span className="text-slate-900 dark:text-white font-medium">{totalPrice.toLocaleString()}₸</span>
+                  </div>
+                  {totalDeposit > 0 && (
+                    <div className="flex justify-between text-sm mb-2">
+                      <span className="text-slate-600 dark:text-slate-400">Депозит (возвращается)</span>
+                      <span className="text-slate-900 dark:text-white font-medium">{totalDeposit.toLocaleString()}₸</span>
+                    </div>
+                  )}
+                  <div className="border-t border-emerald-200 dark:border-emerald-800 mt-3 pt-3 flex justify-between">
+                    <span className="font-semibold text-slate-900 dark:text-white">Итого к оплате</span>
+                    <span className="font-bold text-lg text-emerald-600 dark:text-emerald-400">{(totalPrice + totalDeposit).toLocaleString()}₸</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setCheckoutStep('confirm')}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl font-semibold text-lg transition-all active:scale-[0.98]"
+                >
+                  Далее
+                </button>
+              </div>
+            )}
+
+            {/* Step: Confirm */}
+            {checkoutStep === 'confirm' && (
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Подтвердите аренду</h2>
+                  <button onClick={() => setCheckoutStep('dates')} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-2xl leading-none">&times;</button>
+                </div>
+
+                <div className="text-center mb-6">
+                  <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-10 h-10 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-400">Вы арендуете {cartItems.length} {cartItems.length === 1 ? 'вещь' : 'вещей'} на {days} {days === 1 ? 'день' : days < 5 ? 'дня' : 'дней'}</p>
+                </div>
+
+                <div className="space-y-2 mb-4">
+                  {cartItems.map(item => (
+                    <div key={item.id} className="flex items-center gap-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3">
+                      <div className="w-12 h-12 relative rounded-lg overflow-hidden flex-shrink-0">
+                        <Image src={item.imageUrl || placeholderByCategory['Одежда']} alt={item.name} fill className="object-cover" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{item.name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{item.size} · {item.dailyPrice.toLocaleString()}₸/день</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 mb-6 text-sm">
+                  <div className="flex justify-between mb-1">
+                    <span className="text-slate-500 dark:text-slate-400">Период</span>
+                    <span className="text-slate-900 dark:text-white">{new Date(startDate).toLocaleDateString('ru-RU')} — {new Date(endDate).toLocaleDateString('ru-RU')}</span>
+                  </div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-slate-500 dark:text-slate-400">Аренда</span>
+                    <span className="text-slate-900 dark:text-white">{totalPrice.toLocaleString()}₸</span>
+                  </div>
+                  {totalDeposit > 0 && (
+                    <div className="flex justify-between mb-1">
+                      <span className="text-slate-500 dark:text-slate-400">Депозит</span>
+                      <span className="text-slate-900 dark:text-white">{totalDeposit.toLocaleString()}₸</span>
+                    </div>
+                  )}
+                  <div className="border-t border-slate-200 dark:border-slate-600 mt-2 pt-2 flex justify-between font-semibold">
+                    <span className="text-slate-900 dark:text-white">Итого</span>
+                    <span className="text-emerald-600 dark:text-emerald-400">{(totalPrice + totalDeposit).toLocaleString()}₸</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setCheckoutStep('dates')}
+                    className="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-white py-3 rounded-xl font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 transition"
+                  >
+                    Назад
+                  </button>
+                  <button
+                    onClick={handleConfirmRental}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-semibold transition-all active:scale-[0.98]"
+                  >
+                    Подтвердить
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step: Processing */}
+            {checkoutStep === 'processing' && (
+              <div className="p-6 text-center">
+                <div className="w-16 h-16 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mx-auto mb-6"></div>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Оформляем аренду...</h2>
+                <p className="text-slate-500 dark:text-slate-400">Подождите немного</p>
+              </div>
+            )}
+
+            {/* Step: Success */}
+            {checkoutStep === 'success' && (
+              <div className="p-6 text-center">
+                <div className="w-24 h-24 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
+                  <svg className="w-12 h-12 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Аренда оформлена!</h2>
+                <p className="text-slate-500 dark:text-slate-400 mb-6">
+                  Заявка отправлена. Курьер свяжется с вами для подтверждения доставки.
+                </p>
+                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 mb-6 text-sm text-left">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-emerald-500">✓</span>
+                    <span className="text-slate-700 dark:text-slate-300">Доставим в течение 2 часов</span>
+                  </div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-emerald-500">✓</span>
+                    <span className="text-slate-700 dark:text-slate-300">Депозит будет заблокирован</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-500">✓</span>
+                    <span className="text-slate-700 dark:text-slate-300">Отслеживайте статус в кабинете</span>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => { setShowCheckout(false); setCheckoutStep('dates'); router.push('/account'); }}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-semibold transition"
+                  >
+                    В кабинет
+                  </button>
+                  <button
+                    onClick={() => { setShowCheckout(false); setCheckoutStep('dates'); }}
+                    className="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-white py-3 rounded-xl font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 transition"
+                  >
+                    Продолжить
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step: Error */}
+            {checkoutStep === 'error' && (
+              <div className="p-6 text-center">
+                <div className="w-24 h-24 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <svg className="w-12 h-12 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Ошибка</h2>
+                <p className="text-slate-500 dark:text-slate-400 mb-6">{errorMsg}</p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => { setCheckoutStep('dates'); setErrorMsg(''); }}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-semibold transition"
+                  >
+                    Попробовать снова
+                  </button>
+                  {errorMsg.includes('подписк') && (
+                    <button
+                      onClick={() => { setShowCheckout(false); router.push('/pricing'); }}
+                      className="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-white py-3 rounded-xl font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 transition"
+                    >
+                      К тарифам
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
