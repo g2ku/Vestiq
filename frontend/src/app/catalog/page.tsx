@@ -97,9 +97,6 @@ export default function CatalogPage() {
   const counts = getCategoryCounts();
 
   const cartItems = clothing.filter(c => rentCart.includes(c.id));
-  const days = Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)));
-  const totalPerDay = cartItems.reduce((sum, c) => sum + c.dailyPrice, 0);
-  const totalPrice = totalPerDay * days;
   const totalDeposit = cartItems.reduce((sum, c) => sum + c.deposit, 0);
 
   const handleRent = (item: Clothing) => {
@@ -307,7 +304,9 @@ export default function CatalogPage() {
                 </div>
                 <div>
                   <p className="font-semibold">{rentCart.length} {rentCart.length === 1 ? 'вещь' : 'вещей'} выбрано</p>
-                  <p className="text-sm text-slate-300 dark:text-slate-600">~{totalPerDay.toLocaleString()}₸/день</p>
+                  <p className="text-sm text-slate-300 dark:text-slate-600">
+                    Депозит: {totalDeposit.toLocaleString()}₸
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -380,7 +379,7 @@ export default function CatalogPage() {
                     {cartItems.map(item => (
                       <div key={item.id} className="flex items-center justify-between text-sm">
                         <span className="text-slate-600 dark:text-slate-400 truncate mr-2">{item.name}</span>
-                        <span className="text-slate-900 dark:text-white font-medium whitespace-nowrap">{item.dailyPrice.toLocaleString()}₸/день</span>
+                        <span className="text-slate-900 dark:text-white font-medium whitespace-nowrap">Депозит: {item.deposit.toLocaleString()}₸</span>
                       </div>
                     ))}
                   </div>
@@ -389,12 +388,8 @@ export default function CatalogPage() {
                 {/* Price breakdown */}
                 <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-4 mb-6">
                   <div className="flex justify-between text-sm mb-2">
-                    <span className="text-slate-600 dark:text-slate-400">{days} {days === 1 ? 'день' : days < 5 ? 'дня' : 'дней'} × {cartItems.length} {cartItems.length === 1 ? 'вещь' : 'вещей'}</span>
-                    <span className="text-slate-900 dark:text-white font-medium">{totalPerDay.toLocaleString()}₸/день</span>
-                  </div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-slate-600 dark:text-slate-400">Стоимость аренды</span>
-                    <span className="text-slate-900 dark:text-white font-medium">{totalPrice.toLocaleString()}₸</span>
+                    <span className="text-slate-600 dark:text-slate-400">Подписка покрывает аренду</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">Включено</span>
                   </div>
                   {totalDeposit > 0 && (
                     <div className="flex justify-between text-sm mb-2">
@@ -404,7 +399,7 @@ export default function CatalogPage() {
                   )}
                   <div className="border-t border-emerald-200 dark:border-emerald-800 mt-3 pt-3 flex justify-between">
                     <span className="font-semibold text-slate-900 dark:text-white">Итого к оплате</span>
-                    <span className="font-bold text-lg text-emerald-600 dark:text-emerald-400">{(totalPrice + totalDeposit).toLocaleString()}₸</span>
+                    <span className="font-bold text-lg text-emerald-600 dark:text-emerald-400">{totalDeposit.toLocaleString()}₸</span>
                   </div>
                 </div>
 
@@ -431,7 +426,7 @@ export default function CatalogPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
-                  <p className="text-slate-600 dark:text-slate-400">Вы арендуете {cartItems.length} {cartItems.length === 1 ? 'вещь' : 'вещей'} на {days} {days === 1 ? 'день' : days < 5 ? 'дня' : 'дней'}</p>
+                  <p className="text-slate-600 dark:text-slate-400">Вы арендуете {cartItems.length} {cartItems.length === 1 ? 'вещь' : 'вещей'} на {days} {days === 1 ? 'день' : days < 5 ? 'дня' : 'дней'} по подписке</p>
                 </div>
 
                 <div className="space-y-2 mb-4">
@@ -442,7 +437,7 @@ export default function CatalogPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{item.name}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">{item.size} · {item.dailyPrice.toLocaleString()}₸/день</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{item.size} · Депозит: {item.deposit.toLocaleString()}₸</p>
                       </div>
                     </div>
                   ))}
@@ -455,7 +450,7 @@ export default function CatalogPage() {
                   </div>
                   <div className="flex justify-between mb-1">
                     <span className="text-slate-500 dark:text-slate-400">Аренда</span>
-                    <span className="text-slate-900 dark:text-white">{totalPrice.toLocaleString()}₸</span>
+                    <span className="text-emerald-600 dark:text-emerald-400">По подписке</span>
                   </div>
                   {totalDeposit > 0 && (
                     <div className="flex justify-between mb-1">
@@ -465,7 +460,7 @@ export default function CatalogPage() {
                   )}
                   <div className="border-t border-slate-200 dark:border-slate-600 mt-2 pt-2 flex justify-between font-semibold">
                     <span className="text-slate-900 dark:text-white">Итого</span>
-                    <span className="text-emerald-600 dark:text-emerald-400">{(totalPrice + totalDeposit).toLocaleString()}₸</span>
+                    <span className="text-emerald-600 dark:text-emerald-400">{totalDeposit.toLocaleString()}₸</span>
                   </div>
                 </div>
 
@@ -643,7 +638,7 @@ export default function CatalogPage() {
                   </div>
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-emerald-500">✓</span>
-                    <span className="text-slate-700 dark:text-slate-300">Депозит будет заблокирован</span>
+                    <span className="text-slate-700 dark:text-slate-300">Депозит будет возвращён после возврата</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-emerald-500">✓</span>
