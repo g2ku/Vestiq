@@ -25,6 +25,7 @@ function CheckoutContent() {
   const [cardCvv, setCardCvv] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(true);
+  const [paymentErrors, setPaymentErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!user) {
@@ -67,6 +68,60 @@ function CheckoutContent() {
       return v.substring(0, 2) + '/' + v.substring(2, 4);
     }
     return v;
+  };
+
+  const validatePayment = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    if (selectedMethod === 'kaspi' || selectedMethod === 'halyk') {
+      const cleaned = phoneNumber.replace(/\D/g, '');
+      if (!cleaned) {
+        errors.phone = 'Введите номер телефона';
+      } else if (!/^7\d{10}$/.test(cleaned)) {
+        errors.phone = 'Некорректный номер. Формат: +7 (7XX) XXX-XX-XX';
+      }
+    } else {
+      const digits = cardNumber.replace(/\s/g, '');
+      if (!digits) {
+        errors.cardNumber = 'Введите номер карты';
+      } else if (digits.length < 16) {
+        errors.cardNumber = 'Номер карты должен содержать 16 цифр';
+      }
+
+      if (!cardExpiry) {
+        errors.expiry = 'Введите срок действия';
+      } else {
+        const [mm, yy] = cardExpiry.split('/');
+        const month = parseInt(mm, 10);
+        const year = parseInt(yy, 10);
+        if (!mm || !yy || isNaN(month) || isNaN(year)) {
+          errors.expiry = 'Формат: MM/YY';
+        } else if (month < 1 || month > 12) {
+          errors.expiry = 'Месяц от 01 до 12';
+        } else {
+          const now = new Date();
+          const expiry = new Date(2000 + year, month);
+          if (expiry <= now) {
+            errors.expiry = 'Карта просрочена';
+          }
+        }
+      }
+
+      if (!cardCvv) {
+        errors.cvv = 'Введите CVV';
+      } else if (cardCvv.length < 3) {
+        errors.cvv = 'CVV должен содержать 3 цифры';
+      }
+    }
+
+    setPaymentErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handlePay = () => {
+    if (validatePayment()) {
+      handlePayment();
+    }
   };
 
   const handlePayment = async () => {
@@ -225,7 +280,7 @@ function CheckoutContent() {
                   ].map(m => (
                     <button
                       key={m.id}
-                      onClick={() => setSelectedMethod(m.id)}
+                      onClick={() => { setSelectedMethod(m.id); setPaymentErrors({}); }}
                       className={`p-4 rounded-xl border-2 transition-all ${
                         selectedMethod === m.id
                           ? `${m.border} ${m.bg} shadow-md`
@@ -246,10 +301,11 @@ function CheckoutContent() {
                     <input
                       type="tel"
                       value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      onChange={(e) => { setPhoneNumber(e.target.value); setPaymentErrors(prev => { const n = {...prev}; delete n.phone; return n; }); }}
                       placeholder="+7 (700) 123-45-67"
-                      className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition"
+                      className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition ${paymentErrors.phone ? 'border-red-500 dark:border-red-500' : 'border-slate-200 dark:border-slate-600'}`}
                     />
+                    {paymentErrors.phone && <p className="text-xs text-red-500 mt-1">{paymentErrors.phone}</p>}
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
                       На этот номер придёт код для подтверждения оплаты
                     </p>
@@ -261,11 +317,12 @@ function CheckoutContent() {
                       <input
                         type="text"
                         value={cardNumber}
-                        onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                        onChange={(e) => { setCardNumber(formatCardNumber(e.target.value)); setPaymentErrors(prev => { const n = {...prev}; delete n.cardNumber; return n; }); }}
                         placeholder="1234 5678 9012 3456"
                         maxLength={19}
-                        className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition font-mono"
+                        className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition font-mono ${paymentErrors.cardNumber ? 'border-red-500 dark:border-red-500' : 'border-slate-200 dark:border-slate-600'}`}
                       />
+                      {paymentErrors.cardNumber && <p className="text-xs text-red-500 mt-1">{paymentErrors.cardNumber}</p>}
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -273,22 +330,24 @@ function CheckoutContent() {
                         <input
                           type="text"
                           value={cardExpiry}
-                          onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
+                          onChange={(e) => { setCardExpiry(formatExpiry(e.target.value)); setPaymentErrors(prev => { const n = {...prev}; delete n.expiry; return n; }); }}
                           placeholder="MM/YY"
                           maxLength={5}
-                          className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition font-mono"
+                          className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition font-mono ${paymentErrors.expiry ? 'border-red-500 dark:border-red-500' : 'border-slate-200 dark:border-slate-600'}`}
                         />
+                        {paymentErrors.expiry && <p className="text-xs text-red-500 mt-1">{paymentErrors.expiry}</p>}
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">CVV</label>
                         <input
                           type="password"
                           value={cardCvv}
-                          onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                          onChange={(e) => { setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 3)); setPaymentErrors(prev => { const n = {...prev}; delete n.cvv; return n; }); }}
                           placeholder="•••"
                           maxLength={3}
-                          className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition font-mono"
+                          className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition font-mono ${paymentErrors.cvv ? 'border-red-500 dark:border-red-500' : 'border-slate-200 dark:border-slate-600'}`}
                         />
+                        {paymentErrors.cvv && <p className="text-xs text-red-500 mt-1">{paymentErrors.cvv}</p>}
                       </div>
                     </div>
                   </>
@@ -312,7 +371,7 @@ function CheckoutContent() {
               </div>
 
               <button
-                onClick={handlePayment}
+                onClick={handlePay}
                 className="w-full mt-6 bg-gradient-to-r from-emerald-600 to-teal-600 text-white py-4 rounded-xl font-semibold text-lg hover:from-emerald-700 hover:to-teal-700 transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl btn-ripple"
               >
                 Оплатить {plan?.priceMonthly.toLocaleString()}₸
