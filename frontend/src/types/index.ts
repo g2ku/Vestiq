@@ -33,6 +33,7 @@ export interface Clothing {
   id: string;
   name: string;
   description?: string;
+  komplekt?: string;
   category: string;
   subcategory?: string;
   brand?: string;
