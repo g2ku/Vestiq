@@ -58,6 +58,7 @@ model Clothing {
   id            String    @id @default(uuid())
   name          String
   description   String?
+  komplekt      String?
   category      String
   subcategory   String?
   brand         String?

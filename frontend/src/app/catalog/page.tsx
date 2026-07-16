@@ -263,8 +263,11 @@ export default function CatalogPage() {
                         </div>
 
                         <div className="mt-auto">
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mb-2 line-clamp-2">{item.description}</p>
+                          {item.komplekt && (
+                            <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-2">В комплекте: {item.komplekt}</p>
+                          )}
                           <div className="flex items-center justify-between mb-3">
-                            <span className="font-bold text-emerald-600 dark:text-emerald-400">{item.dailyPrice.toLocaleString()}₸/день</span>
                             {item.deposit > 0 && (
                               <span className="text-xs text-slate-500 dark:text-slate-400">Депозит: {item.deposit.toLocaleString()}₸</span>
                             )}
