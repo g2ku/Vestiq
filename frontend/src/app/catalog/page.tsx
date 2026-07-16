@@ -3,11 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { clothingApi, rentalsApi } from '@/services/api';
+import { clothingApi, rentalsApi, subscriptionsApi } from '@/services/api';
 import { useAuth } from '@/lib/auth';
 import { FadeInUp, CardHover } from '@/components/Animations';
 import { Meteors } from '@/components/ui/meteors';
-import type { Clothing } from '@/types';
+import type { Clothing, UserSubscription } from '@/types';
 
 const categories = ['Все', 'Одежда', 'Детские товары', 'Украшения', 'Аксессуары', 'Туристические'];
 const sizes = ['Все', 'XS', 'S', 'M', 'L', 'XL'];
@@ -55,10 +55,21 @@ export default function CatalogPage() {
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvv, setCardCvv] = useState('');
   const [paymentErrors, setPaymentErrors] = useState<Record<string, string>>({});
+  const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const { user } = useAuth();
   const router = useRouter();
 
+  const hasActiveSubscription = subscription && subscription.status === 'ACTIVE' && new Date(subscription.endDate) > new Date();
+
   useEffect(() => { fetchClothing(); }, []);
+
+  useEffect(() => {
+    if (user) {
+      subscriptionsApi.getCurrent()
+        .then(res => setSubscription(res.data))
+        .catch(() => {});
+    }
+  }, [user]);
 
   const fetchClothing = async () => {
     try {
@@ -103,6 +114,7 @@ export default function CatalogPage() {
 
   const handleRent = (item: Clothing) => {
     if (!user) { router.push('/login'); return; }
+    if (!hasActiveSubscription) { router.push('/pricing'); return; }
     if (!item.isAvailable || item.quantity <= 0) return;
     if (rentCart.includes(item.id)) {
       setRentCart(prev => prev.filter(id => id !== item.id));
@@ -113,6 +125,7 @@ export default function CatalogPage() {
 
   const handleOpenCheckout = () => {
     if (!user) { router.push('/login'); return; }
+    if (!hasActiveSubscription) { router.push('/pricing'); return; }
     if (rentCart.length === 0) return;
     setCheckoutStep('dates');
     setShowCheckout(true);
@@ -268,6 +281,23 @@ export default function CatalogPage() {
           </div>
         </FadeInUp>
 
+        {!hasActiveSubscription && user && (
+          <FadeInUp delay={0.1}>
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 mb-6 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">⚡</span>
+                <div>
+                  <p className="font-semibold text-slate-900 dark:text-white text-sm">Для аренды нужна подписка</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Выберите тариф и начните аренду уже сегодня</p>
+                </div>
+              </div>
+              <a href="/pricing" className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition whitespace-nowrap">
+                Выбрать тариф
+              </a>
+            </div>
+          </FadeInUp>
+        )}
+
         <FadeInUp delay={0.2}>
           <p className="text-slate-500 dark:text-slate-400 mb-6">Найдено: {filteredClothing.length} товаров</p>
         </FadeInUp>
@@ -337,10 +367,12 @@ export default function CatalogPage() {
                                 ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed'
                                 : rentCart.includes(item.id)
                                   ? 'bg-slate-900 dark:bg-white dark:text-slate-900 text-white hover:bg-slate-800 dark:hover:bg-slate-100 active:scale-[0.98] shadow-sm'
-                                  : 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98] shadow-sm hover:shadow-md'
+                                  : !hasActiveSubscription
+                                    ? 'bg-amber-500 text-white hover:bg-amber-600 active:scale-[0.98] shadow-sm'
+                                    : 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98] shadow-sm hover:shadow-md'
                             }`}
                           >
-                            {outOfStock ? 'Нет в наличии' : rentCart.includes(item.id) ? '✓ В корзине' : 'Арендовать'}
+                            {outOfStock ? 'Нет в наличии' : rentCart.includes(item.id) ? '✓ В корзине' : !hasActiveSubscription ? 'Нужна подписка' : 'Арендовать'}
                           </button>
                         </div>
                       </div>
