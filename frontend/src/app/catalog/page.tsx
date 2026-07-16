@@ -28,7 +28,8 @@ const placeholderByCategory: Record<string, string> = {
   'Туристические': 'https://images.unsplash.com/photo-1530789253388-582c481c54b0?w=400&h=500&fit=crop',
 };
 
-type CheckoutStep = 'dates' | 'confirm' | 'processing' | 'success' | 'error';
+type CheckoutStep = 'dates' | 'confirm' | 'payment' | 'processing' | 'success' | 'error';
+type PaymentMethod = 'kaspi' | 'card' | 'halyk';
 
 export default function CatalogPage() {
   const [clothing, setClothing] = useState<Clothing[]>([]);
@@ -48,6 +49,11 @@ export default function CatalogPage() {
     return d.toISOString().split('T')[0];
   });
   const [errorMsg, setErrorMsg] = useState('');
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('kaspi');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
   const { user } = useAuth();
   const router = useRouter();
 
@@ -116,11 +122,18 @@ export default function CatalogPage() {
   const handleConfirmRental = async () => {
     setCheckoutStep('processing');
     try {
-      await rentalsApi.create({
+      const rental = await rentalsApi.create({
         clothingIds: rentCart,
         startDate: new Date(startDate).toISOString(),
         endDate: new Date(endDate).toISOString()
       });
+      try {
+        const { paymentsApi } = await import('@/services/api');
+        await paymentsApi.create({
+          orderId: rental.data.id,
+          paymentMethod: selectedMethod
+        });
+      } catch {}
       setCheckoutStep('success');
       setRentCart([]);
     } catch (error: any) {
@@ -464,10 +477,139 @@ export default function CatalogPage() {
                     Назад
                   </button>
                   <button
+                    onClick={() => setCheckoutStep('payment')}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-semibold transition-all active:scale-[0.98]"
+                  >
+                    Перейти к оплате
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step: Payment */}
+            {checkoutStep === 'payment' && (
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Оплата депозита</h2>
+                  <button onClick={() => setCheckoutStep('confirm')} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-2xl leading-none">&times;</button>
+                </div>
+
+                {/* Payment amount */}
+                <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl p-4 text-white mb-6">
+                  <p className="text-sm opacity-80 mb-1">Сумма к оплате</p>
+                  <p className="text-3xl font-bold">{totalDeposit.toLocaleString()}₸</p>
+                  <p className="text-xs opacity-70 mt-1">Депозит · возвращается после возврата вещей</p>
+                </div>
+
+                {/* Payment methods */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Способ оплаты</label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { id: 'kaspi' as const, icon: '🏦', label: 'Kaspi' },
+                      { id: 'card' as const, icon: '💳', label: 'Карта' },
+                      { id: 'halyk' as const, icon: '🏛️', label: 'Халык' },
+                    ].map(m => (
+                      <button
+                        key={m.id}
+                        onClick={() => setSelectedMethod(m.id)}
+                        className={`p-3 rounded-xl border-2 transition-all text-center ${
+                          selectedMethod === m.id
+                            ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 shadow-md'
+                            : 'border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
+                        }`}
+                      >
+                        <div className="text-2xl mb-1">{m.icon}</div>
+                        <div className="text-sm font-medium text-slate-900 dark:text-white">{m.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Payment fields */}
+                <div className="space-y-4 mb-6">
+                  {selectedMethod === 'kaspi' || selectedMethod === 'halyk' ? (
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Номер телефона</label>
+                      <input
+                        type="tel"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        placeholder="+7 (700) 123-45-67"
+                        className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition"
+                      />
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">На номер придёт код для подтверждения</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Номер карты</label>
+                        <input
+                          type="text"
+                          value={cardNumber}
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+                            const match = v.match(/\d{4,16}/g);
+                            const m = (match && match[0]) || '';
+                            const parts = [];
+                            for (let i = 0; i < m.length; i += 4) parts.push(m.substring(i, i + 4));
+                            setCardNumber(parts.join(' '));
+                          }}
+                          placeholder="1234 5678 9012 3456"
+                          maxLength={19}
+                          className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition font-mono"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Срок</label>
+                          <input
+                            type="text"
+                            value={cardExpiry}
+                            onChange={(e) => {
+                              const v = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+                              setCardExpiry(v.length >= 2 ? v.substring(0, 2) + '/' + v.substring(2, 4) : v);
+                            }}
+                            placeholder="MM/YY"
+                            maxLength={5}
+                            className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">CVV</label>
+                          <input
+                            type="password"
+                            value={cardCvv}
+                            onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                            placeholder="•••"
+                            maxLength={3}
+                            className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white dark:bg-slate-700 text-slate-900 dark:text-white transition font-mono"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 flex items-center gap-1.5">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  Тестовая оплата — деньги не списываются
+                </p>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setCheckoutStep('confirm')}
+                    className="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-white py-3 rounded-xl font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 transition"
+                  >
+                    Назад
+                  </button>
+                  <button
                     onClick={handleConfirmRental}
                     className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-semibold transition-all active:scale-[0.98]"
                   >
-                    Подтвердить
+                    Оплатить {totalDeposit.toLocaleString()}₸
                   </button>
                 </div>
               </div>
