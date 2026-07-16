@@ -97,6 +97,7 @@ export default function CatalogPage() {
   const counts = getCategoryCounts();
 
   const cartItems = clothing.filter(c => rentCart.includes(c.id));
+  const days = Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)));
   const totalDeposit = cartItems.reduce((sum, c) => sum + c.deposit, 0);
 
   const handleRent = (item: Clothing) => {
